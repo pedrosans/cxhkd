@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+import argparse
+import gi
+import importlib.util
+import os
+import re
+import signal
+import sys
+import Xlib
+from functools import reduce
+from itertools import combinations
+from subprocess import Popen
+from typing import Dict, Tuple
+from xdg import BaseDirectory as Base
+from Xlib import X
+from Xlib.display import Display
+from Xlib.protocol import rq
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+
+VERSION = '0.1'
+parser = argparse.ArgumentParser()
+parser.add_argument('-v', '--version', required=False, action='store_true', help='print the version')
+args = parser.parse_args()
+
+if args.version:
+	print(VERSION)
+	exit(0)
+
+
+class Key:
+
+	def __init__(self, code: int, mask: int, function=None, children=()):
+		self.code = code
+		self.mask = normalize(mask)
+		self.id = (self.code, self.mask)
+		self.function = function
+		self.children = children
+
+
+class Context:
+
+	def __init__(self, level: int, key: Key = None):
+		self.level = level
+		self.key = key
+		self.children: Dict[Tuple, Context] = {}
+
+	def bind(self, key: Key):
+
+		if key.id in self.children:
+			raise Exception('key code: {} mask: {} is already bound'.format(key.code, key.mask))
+
+		context = Context(level=self.level + 1, key=key)
+
+		self.children[key.id] = context
+
+		for child in key.children:
+			context.bind(child)
+
+
+def normalize(state) -> int: return state & id_masks
+
+
+def fork_setsid_execve(cmd): return lambda: Popen(cmd, shell=True, preexec_fn=os.setsid)
+
+
+def read(_config):
+	keys = []
+	for name in [item for item in dir(_config) if not item.startswith("__")]:
+
+		accelerator = re.sub('(?i)ctrl_', '<ctrl>', name)
+		accelerator = re.sub('(?i)shift_', '<shift>', accelerator)
+		accelerator = re.sub('(?i)alt_', '<alt>', accelerator)
+
+		key, codes, modifier_masks = Gtk.accelerator_parse_with_keycode(accelerator)
+
+		if not key:
+			continue
+
+		if len(codes) != 1:
+			raise Exception('Accelerator not supported: {}'.format(accelerator))
+
+		attr = getattr(_config, name)
+
+		if isinstance(attr, str):
+			keys.append(Key(codes[0], modifier_masks, function=fork_setsid_execve(attr)))
+		elif callable(attr):
+			keys.append(Key(codes[0], modifier_masks, children=read(attr)))
+		else:
+			raise Exception('Invalid accelerator attribute')
+
+	return keys
+
+
+def handle_keypress(_event: Xlib.protocol.event.KeyPress):
+
+	key_id = (_event.detail, normalize(_event.state))
+
+	if key_id in current_context.children and current_context.children[key_id].key.function:
+		current_context.children[key_id].key.function()
+
+	if key_id in current_context.children and current_context.children[key_id].children:
+		advance_key_streak(key_id, _event.time)
+	elif _event.detail not in modifier_keycodes:
+		reset_key_streak(_event.time)
+
+
+def advance_key_streak(key_id: Tuple, time):
+	global current_context, temporary_grab
+	current_context = current_context.children[key_id]
+	if not temporary_grab:
+		root_window.grab_keyboard(True, X.GrabModeAsync, X.GrabModeAsync, time)
+		temporary_grab = True
+
+
+def reset_key_streak(time):
+	global current_context, temporary_grab
+	current_context = root_context
+	if temporary_grab:
+		display.ungrab_keyboard(time)
+		temporary_grab = False
+
+
+def close(sig, frame):
+	display.close()
+	sys.exit(0)
+
+
+# GLOBAL VARIABLES
+temporary_grab = False
+root_context = Context(level=0)
+current_context = root_context
+
+# MASKS
+id_masks = X.ControlMask | X.ShiftMask | X.Mod1Mask | X.Mod4Mask
+noise = (X.Mod2Mask, X.Mod3Mask, X.LockMask)
+noise_combinations = reduce(lambda x, y: x + y, map(lambda r: list(combinations(noise, r)), [0, 1, 2, 3]))
+noise_combination_masks = set(map(lambda combination: reduce(lambda x, y: x | y, combination, 0), noise_combinations))
+
+# CONNECT TO XORG
+display = Display()
+root_window = display.screen().root
+root_window.change_attributes(event_mask=X.KeyPressMask)
+
+# READ THE DISPLAY AND CONFIG
+modifier_keycodes = reduce(lambda x, y: x.union(y), display.get_modifier_mapping(), set())
+path = os.path.join(Base.save_config_path('cxhkd'), "cxhkd.py")
+spec = importlib.util.spec_from_file_location("config", path)
+config = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(config)
+
+# HANDLERS
+signal.signal(signal.SIGINT,  close)
+signal.signal(signal.SIGTERM, close)
+signal.signal(signal.SIGHUP,  close)
+for _key in read(config):
+	root_context.bind(_key)
+	for noise_combination_mask in noise_combination_masks:
+		display.set_error_handler(
+			lambda *a: print('unable to grab key code {} mask {} noise {}'.format(_key.code, _key.mask, noise_combination_mask), file=sys.stderr))
+		root_window.grab_key(_key.code, _key.mask | noise_combination_mask, True, X.GrabModeAsync, X.GrabModeAsync)
+		display.sync()
+display.set_error_handler(lambda exc, req: print(exc, file=sys.stderr))
+while True:
+	event = display.next_event()
+	if event.type == X.KeyPress:
+		handle_keypress(event)

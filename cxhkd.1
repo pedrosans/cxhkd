@@ -1,0 +1,35 @@
+.TH cxhkd 1 cxhkd\-VERSION
+.SH NAME
+cxhkd \- per context hotkey daemon
+.SH SYNOPSIS
+cxhkd
+.OP -v
+.SH DESCRIPTION
+cxhkd is a hotkey daemon that runs commands
+defined as strings in the python module
+~/.confi/cxhkd/cxhkd.py
+for keys code/mask symbolized by their accelerator
+in the variable name
+.SH OPTIONS
+.TP
+.B \-v
+print the version
+.SH IMPLEMENTATION
+One of two set of keys is, at any given moment, grabbed by this daemon.
+The first set contains the keys code/mask parsed from accelerators
+found in variable names listed in the config python module,
+the second the entire keyboard.
+The daemon alternates from one set to another based on the current context.
+
+The context is a set of keys code/mask being currently listened by the daemon.
+The context can have child contexts, identified by a key code/mask, forming a tree structure. 
+The root context causes any command bound to the receiving key code/mask
+to be executed, or initiates a key streak if a child context id matches the receiving key code/mask.
+The key streak grabs the keyboard and continues until the receinving key code/mask
+matches a command, or does not match neither a command or a child context key code/mask.
+
+
+The daemon only handles key presses
+
+Inside an accelerator string: ctrl, shift, alt modifiers can be writen
+
