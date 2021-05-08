@@ -1,8 +1,13 @@
 # cxhkd
 
-per context hotkey daemon
+Per context X hotkey daemon
 
-Commands and keys are defined in the config module `~/.config/cxhkd/cxhkd.py`.
+Commands and keys are defined in the config module: `~/.config/cxhkd/cxhkd.py`
+
+* Code/mask pair in the accelerator strings are cached
+* Only handles key presses (ignores key release and mapping notify)
+* Grabs the keyboard if the pressed code/mask identifies a context with nested contexts, starting a key streak
+* Any key, but the modifiers, not listed in the current context stops the streak (no dedicated key)
 
 ### Example config file
 
@@ -29,7 +34,7 @@ ctrl_shift_j = \
 	'pocoy window pushstack 1'
 
 ctrl_shift_k = \
-	"pocoy window pushstack '-1'"
+	'pocoy window pushstack -- -1'
 
 
 class ctrl_e: pass
@@ -40,9 +45,6 @@ ctrl_e.q = \
 
 ctrl_e.o = \
 	'pocoy only'
-
-ctrl_e.d = \
-	'pocoy decoration toogle'
 
 ctrl_e.e = ctrl_e.ctrl_e = ctrl_e.p = ctrl_e.ctrl_p = \
 	'pocoy focus previous'
@@ -59,13 +61,6 @@ ctrl_e.k = ctrl_e.ctrl_k = \
 ctrl_e.l = ctrl_e.ctrl_l = \
 	'pocoy focus right'
 
-```
-
-### PPA, for Ubuntu distributions
-```bash
-sudo add-apt-repository ppa:pedrosans/cxhkd
-sudo apt-get update
-sudo apt-get install cxhkd
 ```
 
 ### Locally
@@ -91,11 +86,20 @@ groff -mman cxhkd.1 -T utf8 | less
 Debian dependencies
 
 ```bash
-python3-distutils python3-xdg python3-xlib gir1.2-gtk-3.0
+python3-distutils python3-xdg python3-xlib python3-gi gir1.2-gtk-3.0
 ```
 
 Arch dependencies
 
 ```bash
 python-pyxdg python-xlib gobject-introspection-runtime
+```
+
+
+### PPA
+
+```bash
+sudo add-apt-repository ppa:pedrosans/pocoy
+sudo apt-get update
+sudo apt-get install cxhkd
 ```

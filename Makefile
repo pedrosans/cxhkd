@@ -22,8 +22,9 @@ sources:
 	CHANGES=$$(git log develop --oneline  --reverse --not ${LAST_VERSION}) && echo "$$CHANGES"
 	echo "	SUCCESS The file deb_dist/cxhkd_${VERSION}-1_source.changes can describe the changes in this version"
 publish:
-	debsign -pgpg2 ${CXHKD_PATH}/deb_dist/cxhkd_${VERSION}-1_source.changes && echo "Signed"
-	cd ${CXHKD_PATH}/deb_dist && dput ppa:pedrosans/cxhkd cxhkd_${VERSION}-1_source.changes && echo "Published"
+	debsign -pgpg2 ${CXHKD_PATH}/deb_dist/cxhkd_${VERSION}-1_source.changes
+	cd ${CXHKD_PATH}/deb_dist && dput ppa:pedrosans/pocoy cxhkd_${VERSION}-1_source.changes
+	echo "Published"
 clean:
 	[ ! -f ${CXHKD_PATH}/tags ]                || rm -f  ${CXHKD_PATH}/tags                
 	[ ! -f ${CXHKD_PATH}/cxhkd-*.tar.gz ]      || rm -f  ${CXHKD_PATH}/cxhkd-*.tar.gz      

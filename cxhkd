@@ -68,9 +68,7 @@ def read(_config):
 	keys = []
 	for name in [item for item in dir(_config) if not item.startswith("__")]:
 
-		accelerator = re.sub('(?i)ctrl_', '<ctrl>', name)
-		accelerator = re.sub('(?i)shift_', '<shift>', accelerator)
-		accelerator = re.sub('(?i)alt_', '<alt>', accelerator)
+		accelerator = re.sub(r'(?i)([a-z]+)_', r'<\1>', name)
 
 		key, codes, modifier_masks = Gtk.accelerator_parse_with_keycode(accelerator)
 
