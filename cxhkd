@@ -16,7 +16,7 @@ from Xlib import X
 from Xlib.display import Display
 from Xlib.protocol import rq
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk
+from gi.repository import Gtk, Gdk
 
 VERSION = '0.1'
 parser = argparse.ArgumentParser()
@@ -68,12 +68,15 @@ def read(_config):
 	keys = []
 	for name in [item for item in dir(_config) if not item.startswith("__")]:
 
-		accelerator = re.sub(r'(?i)([a-z]+)_', r'<\1>', name)
-
+		accelerator = re.sub(r'(?i)(alt|ctrl|meta|shift|super)_', r'<\1>', name)
 		key, codes, modifier_masks = Gtk.accelerator_parse_with_keycode(accelerator)
 
 		if not key:
 			continue
+
+		mapped_the_same, non_virtual_counterpart = keymap.map_virtual_modifiers(modifier_masks)
+
+		modifier_masks = non_virtual_counterpart
 
 		if len(codes) != 1:
 			raise Exception('Accelerator not supported: {}'.format(accelerator))
@@ -128,6 +131,7 @@ def close(sig, frame):
 temporary_grab = False
 root_context = Context(level=0)
 current_context = root_context
+keymap = Gdk.Keymap.get_for_display(Gdk.Display.get_default())
 
 # MASKS
 id_masks = X.ControlMask | X.ShiftMask | X.Mod1Mask | X.Mod4Mask
