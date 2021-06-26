@@ -11,7 +11,7 @@ from functools import reduce
 from itertools import combinations
 from subprocess import Popen
 from typing import Dict, Tuple
-from xdg import BaseDirectory as Base
+from xdg import BaseDirectory
 from Xlib import X
 from Xlib.display import Display
 from Xlib.protocol import rq
@@ -21,10 +21,22 @@ from gi.repository import Gtk, Gdk
 VERSION = '0.1'
 parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--version', required=False, action='store_true', help='print the version')
+parser.add_argument('-a', '--autostart', required=False, action='store_true', help='write autostart file')
 args = parser.parse_args()
 
 if args.version:
 	print(VERSION)
+	exit(0)
+
+if args.autostart:
+	from xdg import DesktopEntry as Desktop
+	file = os.path.join(BaseDirectory.save_config_path("autostart"), 'cxhkd.desktop')
+	entry = Desktop.DesktopEntry(file)
+	entry.set('X-GNOME-Autostart-enabled', 'true')
+	entry.set('Name', 'cxhkd')
+	entry.set('Icon', 'cxhkd')
+	entry.set('Exec', 'cxhkd')
+	entry.write(filename=file)
 	exit(0)
 
 
@@ -124,6 +136,7 @@ def reset_key_streak(time):
 
 def close(sig, frame):
 	display.close()
+	gdk_display.close()
 	sys.exit(0)
 
 
@@ -131,7 +144,6 @@ def close(sig, frame):
 temporary_grab = False
 root_context = Context(level=0)
 current_context = root_context
-keymap = Gdk.Keymap.get_for_display(Gdk.Display.get_default())
 
 # MASKS
 id_masks = X.ControlMask | X.ShiftMask | X.Mod1Mask | X.Mod4Mask
@@ -143,10 +155,12 @@ noise_combination_masks = set(map(lambda combination: reduce(lambda x, y: x | y,
 display = Display()
 root_window = display.screen().root
 root_window.change_attributes(event_mask=X.KeyPressMask)
+gdk_display = Gdk.Display.get_default()
+keymap = Gdk.Keymap.get_for_display(gdk_display)
 
 # READ THE DISPLAY AND CONFIG
 modifier_keycodes = reduce(lambda x, y: x.union(y), display.get_modifier_mapping(), set())
-path = os.path.join(Base.save_config_path('cxhkd'), "cxhkd.py")
+path = os.path.join(BaseDirectory.save_config_path('cxhkd'), "cxhkd.py")
 spec = importlib.util.spec_from_file_location("config", path)
 config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config)
