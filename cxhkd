@@ -9,14 +9,13 @@ import sys
 import Xlib
 from functools import reduce
 from itertools import combinations
-from subprocess import Popen
 from typing import Dict, Tuple
 from xdg import BaseDirectory
 from Xlib import X
 from Xlib.display import Display
 from Xlib.protocol import rq
-gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk
+gi.require_version('Gtk', '3.0');from gi.repository import Gtk, Gdk, GLib, Gio
+
 
 VERSION = '0.1'
 parser = argparse.ArgumentParser()
@@ -36,7 +35,7 @@ if args.autostart:
 	entry.set('Name', 'cxhkd')
 	entry.set('Icon', 'cxhkd')
 	entry.set('Exec', 'cxhkd')
-	entry.write(filename=file)
+	entry.write(file)
 	exit(0)
 
 
@@ -73,7 +72,13 @@ class Context:
 def normalize(state) -> int: return state & id_masks
 
 
-def fork_setsid_execve(cmd): return lambda: Popen(cmd, shell=True, preexec_fn=os.setsid)
+def fork_setsid_execve(cmd):
+	def using_glib():
+		Gio.DesktopAppInfo.create_from_commandline(
+			commandline=cmd, application_name=None, flags=Gio.AppInfoCreateFlags.NONE
+		).launch_uris_as_manager(
+			uris=[], launch_context=None, spawn_flags=GLib.SpawnFlags.DEFAULT)
+	return using_glib
 
 
 def read(_config):
