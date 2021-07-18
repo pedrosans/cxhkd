@@ -4,27 +4,24 @@ import gi
 import importlib.util
 import os
 import re
-import signal
 import sys
 import Xlib
 from functools import reduce
 from itertools import combinations
-from typing import Dict, Tuple
+from signal import signal, SIGINT, SIGTERM, SIGHUP
+from typing import Dict, Tuple, List
 from xdg import BaseDirectory
 from Xlib import X
 from Xlib.display import Display
 from Xlib.protocol import rq
 gi.require_version('Gtk', '3.0');from gi.repository import Gtk, Gdk, GLib, Gio
-
-
-VERSION = '0.1'
 parser = argparse.ArgumentParser()
 parser.add_argument('-v', '--version', required=False, action='store_true', help='print the version')
 parser.add_argument('-a', '--autostart', required=False, action='store_true', help='write autostart file')
 args = parser.parse_args()
 
 if args.version:
-	print(VERSION)
+	print('0.1')
 	exit(0)
 
 if args.autostart:
@@ -69,20 +66,34 @@ class Context:
 			context.bind(child)
 
 
+class gdk:
+
+	_display = Gdk.Display.get_default()
+	keymap = Gdk.Keymap.get_for_display(_display)
+
+	def __enter__(self):
+		self._display.error_trap_push()
+		return self
+
+	def __exit__(self, _type, exception, exception_traceback):
+		try:
+			error = self._display.error_trap_pop()
+			if error:
+				raise Exception('X11 Error code {}'.format(error)) from exception
+		finally:
+			self._display.close()
+
+
 def normalize(state) -> int: return state & id_masks
 
 
-def fork_setsid_execve(cmd):
-	def using_glib():
-		Gio.DesktopAppInfo.create_from_commandline(
+def run(cmd): return lambda: Gio.DesktopAppInfo.create_from_commandline(
 			commandline=cmd, application_name=None, flags=Gio.AppInfoCreateFlags.NONE
-		).launch_uris_as_manager(
-			uris=[], launch_context=None, spawn_flags=GLib.SpawnFlags.DEFAULT)
-	return using_glib
+		).launch_uris_as_manager(uris=[], launch_context=None, spawn_flags=GLib.SpawnFlags.DEFAULT)
 
 
-def read(_config):
-	keys = []
+def read(_config, keymap):
+	keys: List[Key] = []
 	for name in [item for item in dir(_config) if not item.startswith("__")]:
 
 		accelerator = re.sub(r'(?i)(alt|ctrl|meta|shift|super)_', r'<\1>', name)
@@ -91,49 +102,34 @@ def read(_config):
 		if not key:
 			continue
 
-		mapped_the_same, non_virtual_counterpart = keymap.map_virtual_modifiers(modifier_masks)
-
-		modifier_masks = non_virtual_counterpart
-
 		if len(codes) != 1:
 			raise Exception('Accelerator not supported: {}'.format(accelerator))
 
+		mapped_the_same, non_virtual_counterpart = keymap.map_virtual_modifiers(modifier_masks)
+		modifier_masks = non_virtual_counterpart
 		attr = getattr(_config, name)
 
 		if isinstance(attr, str):
-			keys.append(Key(codes[0], modifier_masks, function=fork_setsid_execve(attr)))
+			keys.append(Key(codes[0], modifier_masks, function=run(attr)))
 		elif callable(attr):
-			keys.append(Key(codes[0], modifier_masks, children=read(attr)))
+			keys.append(Key(codes[0], modifier_masks, function=attr, children=read(attr, keymap)))
 		else:
 			raise Exception('Invalid accelerator attribute')
 
 	return keys
 
 
-def handle_keypress(_event: Xlib.protocol.event.KeyPress):
-
-	key_id = (_event.detail, normalize(_event.state))
-
-	if key_id in current_context.children and current_context.children[key_id].key.function:
-		current_context.children[key_id].key.function()
-
-	if key_id in current_context.children and current_context.children[key_id].children:
-		advance_key_streak(key_id, _event.time)
-	elif _event.detail not in modifier_keycodes:
-		reset_key_streak(_event.time)
-
-
 def advance_key_streak(key_id: Tuple, time):
-	global current_context, temporary_grab
-	current_context = current_context.children[key_id]
+	global pointer, temporary_grab
+	pointer = pointer.children[key_id]
 	if not temporary_grab:
-		root_window.grab_keyboard(True, X.GrabModeAsync, X.GrabModeAsync, time)
+		window.grab_keyboard(True, X.GrabModeAsync, X.GrabModeAsync, time)
 		temporary_grab = True
 
 
 def reset_key_streak(time):
-	global current_context, temporary_grab
-	current_context = root_context
+	global pointer, temporary_grab
+	pointer = root
 	if temporary_grab:
 		display.ungrab_keyboard(time)
 		temporary_grab = False
@@ -141,14 +137,8 @@ def reset_key_streak(time):
 
 def close(sig, frame):
 	display.close()
-	gdk_display.close()
 	sys.exit(0)
 
-
-# GLOBAL VARIABLES
-temporary_grab = False
-root_context = Context(level=0)
-current_context = root_context
 
 # MASKS
 id_masks = X.ControlMask | X.ShiftMask | X.Mod1Mask | X.Mod4Mask
@@ -156,33 +146,63 @@ noise = (X.Mod2Mask, X.Mod3Mask, X.LockMask)
 noise_combinations = reduce(lambda x, y: x + y, map(lambda r: list(combinations(noise, r)), [0, 1, 2, 3]))
 noise_combination_masks = set(map(lambda combination: reduce(lambda x, y: x | y, combination, 0), noise_combinations))
 
-# CONNECT TO XORG
-display = Display()
-root_window = display.screen().root
-root_window.change_attributes(event_mask=X.KeyPressMask)
-gdk_display = Gdk.Display.get_default()
-keymap = Gdk.Keymap.get_for_display(gdk_display)
-
-# READ THE DISPLAY AND CONFIG
-modifier_keycodes = reduce(lambda x, y: x.union(y), display.get_modifier_mapping(), set())
-path = os.path.join(BaseDirectory.save_config_path('cxhkd'), "cxhkd.py")
-spec = importlib.util.spec_from_file_location("config", path)
+# READ CONFIG
+path = os.path.join(BaseDirectory.save_config_path('cxhkd'), 'cxhkd.py')
+spec = importlib.util.spec_from_file_location('config', path)
 config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config)
+with gdk() as gdk_context:
+	user_keys: List[Key] = read(config, gdk_context.keymap)
 
-# HANDLERS
-signal.signal(signal.SIGINT,  close)
-signal.signal(signal.SIGTERM, close)
-signal.signal(signal.SIGHUP,  close)
-for _key in read(config):
-	root_context.bind(_key)
+# CONNECT TO XORG
+display = Display()
+window = display.screen().root
+modifier_keycodes = reduce(lambda x, y: x.union(y), display.get_modifier_mapping(), set())
+signal(SIGINT,  close)
+signal(SIGTERM, close)
+signal(SIGHUP,  close)
+
+# INSTALL CXHKD
+for user_key in user_keys:
 	for noise_combination_mask in noise_combination_masks:
+
 		display.set_error_handler(
-			lambda *a: print('unable to grab key code {} mask {} noise {}'.format(_key.code, _key.mask, noise_combination_mask), file=sys.stderr))
-		root_window.grab_key(_key.code, _key.mask | noise_combination_mask, True, X.GrabModeAsync, X.GrabModeAsync)
+			lambda *a: print(
+				'unable to grab key code {} mask {} noise {}'.format(user_key.code, user_key.mask, noise_combination_mask)))
+
+		window.grab_key(user_key.code, user_key.mask | noise_combination_mask, True, X.GrabModeAsync, X.GrabModeAsync)
+
 		display.sync()
+
 display.set_error_handler(lambda exc, req: print(exc, file=sys.stderr))
+window.change_attributes(event_mask=X.KeyPressMask)
+
+# INITIALIZE
+root = Context(level=0)
+for user_key in user_keys:
+	root.bind(user_key)
+pointer = root
+temporary_grab = False
+
+
+# START
+def handle(_event: Xlib.protocol.event.KeyPress):
+
+	_id = (_event.detail, normalize(_event.state))
+
+	if _id in pointer.children and pointer.children[_id].key.function:
+		pointer.children[_id].key.function()
+
+	if _id in pointer.children and pointer.children[_id].children:
+		advance_key_streak(_id, _event.time)
+	elif _event.detail not in modifier_keycodes:
+		reset_key_streak(_event.time)
+
+
 while True:
+
 	event = display.next_event()
+
 	if event.type == X.KeyPress:
-		handle_keypress(event)
+
+		handle(event)

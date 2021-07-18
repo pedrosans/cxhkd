@@ -1,17 +1,26 @@
 .TH cxhkd 1 cxhkd\-VERSION
+
 .SH NAME
 cxhkd \- Per context X hotkey daemon
+
 .SH SYNOPSIS
 cxhkd
 .OP -v
+.OP -a
+
 .SH DESCRIPTION
 Run commands defined as strings in the python module ~/.confi/cxhkd/cxhkd.py
+
 .SH OPTIONS
-.TP
+
 .B \-v
 print the version
+
+.B \-a
+write autostart .desktop file
+
 .SH IMPLEMENTATION
-One of two sets of keys is, at any given moment, grabbed by this daemon.
+One of two sets of keys is, at any given moment, grabbed by the daemon.
 The first set contains code/mask pairs in the config module's variable names, the second the entire keyboard.
 The daemon alternates from one set to another based on the current context.
 
