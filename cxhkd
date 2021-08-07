@@ -195,7 +195,7 @@ def handle(_event: Xlib.protocol.event.KeyPress):
 
 	if _id in pointer.children and pointer.children[_id].children:
 		advance_key_streak(_id, _event.time)
-	elif _event.detail not in modifier_keycodes:
+	elif _event.detail not in modifier_keycodes or _id in pointer.children:
 		reset_key_streak(_event.time)
 
 
