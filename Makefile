@@ -19,7 +19,6 @@ binaries:
 sources:
 	$(info Packing version ${VERSION}, after: ${LAST_VERSION})
 	python3 ${SETUP_SCRIPT} --command-packages=stdeb.command sdist_dsc --forced-upstream-version ${VERSION} 1>/dev/null
-	CHANGES=$$(git log develop --oneline  --reverse --not ${LAST_VERSION}) && echo "$$CHANGES"
 	echo "	SUCCESS The file deb_dist/cxhkd_${VERSION}-1_source.changes can describe the changes in this version"
 publish:
 	debsign -pgpg2 ${CXHKD_PATH}/deb_dist/cxhkd_${VERSION}-1_source.changes

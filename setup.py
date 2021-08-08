@@ -2,8 +2,8 @@
 from distutils.core import setup
 setup(
 	name='cxhkd',
-	version='0.1',
-	description='hotkey daemon',
+	version='0.2',
+	description='Per context X hotkey daemon',
 	author='Pedro Santos',
 	author_email='pedrosans@gmail.com',
 	url='https://github.com/pedrosans/cxhkd',
