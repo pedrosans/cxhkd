@@ -27,5 +27,5 @@ The daemon alternates from one set to another based on the current context.
 The context is the set of code/mask pairs being currently listened to by the daemon.
 The context can have nested contexts, identified by code/mask pairs, forming a tree structure.
 The daemon executes a command bound to the pressed code/mask or initiates/maintains a streak if the pressed code/mask pair identifies a nested context.
-During a streak, the daemon grabs the keyboard until any key not listed in the current context or a command stops it.
+During a streak, the daemon grabs the keyboard until any key press not listed in the current context stops it.
 

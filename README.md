@@ -2,14 +2,22 @@
 
 Per context X hotkey daemon
 
-Commands and keys are defined in the config module: `~/.config/cxhkd/cxhkd.py`
+* Code/mask pairs in the accelerator strings are cached as contexts in a tree
+	- each context can also point to a command
+* Handles key presses
+	- no handling for key release and mapping notify
+* Grabs the entire keyboard and the next pressed code/mask pairs can:
+	- stop the key streak
+		- and execute a command: if the current context has no child matching the last pressed code/mask pair
+		- and do nothing: any key, but the modifiers, not listed in the current context children stops the streak (no dedicated key is configured to do it)
+	- keep the key streak
+		- and execute a command
+		- and do nothing
+* Can be configured to autostart: `cxhkd -a` writes the cxhkd.desktop honoring XDG specification
+* Commands and keys are defined in the module: `~/.config/cxhkd/cxhkd.py`
 
-* Code/mask pair in the accelerator strings are cached
-* Only handles key presses (ignores key release and mapping notify)
-* Grabs the keyboard if the pressed code/mask identifies a context with nested contexts, starting a key streak
-* Any key, but the modifiers, not listed in the current context stops the streak (no dedicated key)
 
-### Example config file
+### Config module
 
 ```python
 ctrl_Return = \
@@ -24,9 +32,6 @@ ctrl_u = \
 ctrl_m = \
 	'pocoy layout M last'
 
-ctrl_shift_x = \
-	'xdotool getactivewindow windowkill'
-
 ctrl_shift_Return = \
 	'alacritty'
 
@@ -34,20 +39,16 @@ ctrl_shift_j = \
 	'pocoy window pushstack 1'
 
 ctrl_shift_k = \
-	'pocoy window pushstack -- -1'
+	'pocoy window pushstack -1'
 
-
-class ctrl_e: pass
-
+class ctrl_e:
+	pass
 
 ctrl_e.q = \
 	'xdotool getactivewindow windowminimize'
 
 ctrl_e.o = \
 	'pocoy only'
-
-ctrl_e.e = ctrl_e.ctrl_e = ctrl_e.p = ctrl_e.ctrl_p = \
-	'pocoy focus previous'
 
 ctrl_e.h = ctrl_e.ctrl_h = \
 	'pocoy focus left'
@@ -61,9 +62,12 @@ ctrl_e.k = ctrl_e.ctrl_k = \
 ctrl_e.l = ctrl_e.ctrl_l = \
 	'pocoy focus right'
 
+ctrl_e.e = ctrl_e.ctrl_e = ctrl_e.p = ctrl_e.ctrl_p = \
+	'pocoy focus previous'
+
 ```
 
-### Locally
+### Local build
 
 Install
 
@@ -96,7 +100,7 @@ python-pyxdg python-xlib gobject-introspection-runtime
 ```
 
 
-### PPA
+### Remote build
 
 ```bash
 sudo add-apt-repository ppa:pedrosans/pocoy
